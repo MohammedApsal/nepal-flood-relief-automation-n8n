@@ -1,0 +1,677 @@
+{
+  "name": "Nepal Flood Relief - Request Intake (Production Ready)",
+  "nodes": [
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"success\", \"request_id\": $json.request_id, \"urgency\": $json.urgency, \"message\": \"Relief request registered successfully.\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ff13096f-f77b-4d4f-85de-078bbf58ce03",
+      "name": "Respond - Instant Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        -1632,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "flood-relief-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "fb46df29-a78f-45d7-91ba-eb41002a3d96",
+      "name": "Webhook - New Request1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2592,
+        1792
+      ],
+      "webhookId": "flood-relief-intake"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "n1",
+              "name": "full_name",
+              "value": "={{ $json.body?.name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "n2",
+              "name": "phone",
+              "value": "={{ $json.body?.phone || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "n3",
+              "name": "ward_or_village",
+              "value": "={{ $json.body?.location || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "n4",
+              "name": "district",
+              "value": "={{ $json.body?.district || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "n5",
+              "name": "need_type",
+              "value": "={{ $json.body?.need_type || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "n6",
+              "name": "num_people",
+              "value": "={{ Number($json.body?.num_people) || 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "n7",
+              "name": "description",
+              "value": "={{ $json.body?.description || 'None provided' }}",
+              "type": "string"
+            },
+            {
+              "id": "n8",
+              "name": "submitted_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "n9",
+              "name": "source",
+              "value": "={{ $json.body?.source || 'web_form' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e7157364-1b50-4f6e-8c8a-bd6ec0031066",
+      "name": "Normalize Fields1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2352,
+        1792
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = items[0].json;\nconst errors = [];\n\nconst fullName = (item.full_name || '').trim();\nif (fullName.length < 2) errors.push('full_name');\n\nconst ward = (item.ward_or_village || '').trim();\nif (ward.length < 2) errors.push('ward_or_village');\n\nconst district = (item.district || '').trim();\nif (district.length < 2) errors.push('district');\n\n// Normalize Nepal Phone Number to E.164 (+977...)\nlet rawPhone = String(item.phone || '').trim().replace(/[\\s\\-\\(\\)]/g, '');\nlet normalizedPhone = '';\n\nif (rawPhone.startsWith('+977')) {\n  normalizedPhone = rawPhone;\n} else if (rawPhone.startsWith('977')) {\n  normalizedPhone = '+' + rawPhone;\n} else if (/^9[78]\\d{8}$/.test(rawPhone)) {\n  normalizedPhone = '+977' + rawPhone;\n} else if (/^0\\d{8,9}$/.test(rawPhone)) {\n  normalizedPhone = '+977' + rawPhone.replace(/^0/, '');\n} else if (/^\\+?[1-9]\\d{7,14}$/.test(rawPhone)) {\n  normalizedPhone = rawPhone.startsWith('+') ? rawPhone : '+' + rawPhone;\n}\n\nif (!normalizedPhone) {\n  errors.push('phone (requires valid Nepal number)');\n}\n\n// Need categorization & urgency\nconst allowedNeeds = ['food', 'shelter', 'medical', 'rescue', 'water', 'clothing', 'other'];\nconst needType = (item.need_type || '').toLowerCase().trim();\nconst normalizedNeed = allowedNeeds.includes(needType) ? needType : 'other';\n\nlet urgency = 'normal';\nif (['rescue', 'medical'].includes(normalizedNeed)) {\n  urgency = 'critical';\n} else if (['food', 'water', 'shelter'].includes(normalizedNeed)) {\n  urgency = 'high';\n}\n\nreturn [{\n  json: {\n    ...item,\n    full_name: fullName,\n    phone: rawPhone,\n    phone_e164: normalizedPhone,\n    ward_or_village: ward,\n    district: district,\n    need_type: normalizedNeed,\n    urgency: urgency,\n    is_valid: errors.length === 0,\n    validation_errors: errors,\n    request_id: 'NPL-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(100 + Math.random() * 900)\n  }\n}];"
+      },
+      "id": "09597fa9-10b6-4a7a-a23d-b67519c4c139",
+      "name": "Validate & Score Urgency1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2112,
+        1792
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.is_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4681ec6c-bfb1-48cd-a845-820221d48954",
+      "name": "IF Valid?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1872,
+        1792
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"error\", \"message\": \"Validation failed\", \"invalid_fields\": $json.validation_errors } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "3059bfef-7f90-459c-9ec5-062af86eed0f",
+      "name": "Respond - Validation Error1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        -1824,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://maps.googleapis.com/maps/api/geocode/json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "address",
+              "value": "={{ $json.ward_or_village + ', ' + $json.district + ', Nepal' }}"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_MAPS_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7c33b7f2-c9d5-45e1-a10f-352f8053521c",
+      "name": "Geocode Location1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1632,
+        1680
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "g1",
+              "name": "latitude",
+              "value": "={{ $json.results?.[0]?.geometry?.location?.lat || null }}",
+              "type": "number"
+            },
+            {
+              "id": "g2",
+              "name": "longitude",
+              "value": "={{ $json.results?.[0]?.geometry?.location?.lng || null }}",
+              "type": "number"
+            },
+            {
+              "id": "g3",
+              "name": "geocoded_address",
+              "value": "={{ $json.results?.[0]?.formatted_address || 'Unresolved' }}",
+              "type": "string"
+            },
+            {
+              "id": "g4",
+              "name": "maps_link",
+              "value": "={{ $json.results?.[0]?.geometry?.location ? 'https://www.google.com/maps?q=' + $json.results[0].geometry.location.lat + ',' + $json.results[0].geometry.location.lng : 'https://www.google.com/maps/search/' + encodeURIComponent($('Validate & Score Urgency1').item.json.ward_or_village + ', ' + $('Validate & Score Urgency1').item.json.district + ', Nepal') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e09e38d2-4d8e-4fb1-ae4a-f952098dddae",
+      "name": "Extract Coordinates1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1392,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "=https://airtable.com/appxHWSGjZuH42zz5/tbl6MZVy46hFA5Pce/viw930hQEF7xd3bQZ",
+          "mode": "url"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl6MZVy46hFA5Pce",
+          "mode": "list",
+          "cachedResultName": "Requests",
+          "cachedResultUrl": "https://airtable.com/appxHWSGjZuH42zz5/tbl6MZVy46hFA5Pce"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Request ID": "={{ $('Validate & Score Urgency1').item.json.request_id }}",
+            "Full Name": "={{ $('Validate & Score Urgency1').item.json.full_name }}",
+            "Phone": "={{ $('Validate & Score Urgency1').item.json.phone_e164 }}",
+            "Ward/Village": "={{ $('Validate & Score Urgency1').item.json.ward_or_village }}",
+            "District": "={{ $('Validate & Score Urgency1').item.json.district }}",
+            "Need Type": "={{ $('Validate & Score Urgency1').item.json.need_type }}",
+            "Description": "={{ $('Validate & Score Urgency1').item.json.description }}",
+            "Num People": "={{ Number($('Validate & Score Urgency1').item.json.num_people) }}",
+            "Urgency": "={{ $('Validate & Score Urgency1').item.json.urgency }}",
+            "Latitude": "={{ $('Extract Coordinates1').item.json.latitude }}",
+            "Longitude": "={{ $('Extract Coordinates1').item.json.longitude }}",
+            "Maps Link": "={{ $('Extract Coordinates1').item.json.maps_link }}",
+            "Status": "New",
+            "Submitted At": "={{ $('Validate & Score Urgency1').item.json.submitted_at }}",
+            "Source": "={{ $('Validate & Score Urgency1').item.json.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Request ID",
+              "displayName": "Request ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Full Name",
+              "displayName": "Full Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Ward/Village",
+              "displayName": "Ward/Village",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "District",
+              "displayName": "District",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Need Type",
+              "displayName": "Need Type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Num People",
+              "displayName": "Num People",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Description",
+              "displayName": "Description",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Urgency",
+              "displayName": "Urgency",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Latitude",
+              "displayName": "Latitude",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Longitude",
+              "displayName": "Longitude",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Maps Link",
+              "displayName": "Maps Link",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Submitted At",
+              "displayName": "Submitted At",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "4861c44b-9dbf-46aa-89a3-ca2a3a056135",
+      "name": "Save to Airtable - Requests1",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1152,
+        1680
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "QMPpnxtIXfI3Wf7P",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "from": "+14155238886",
+        "to": "={{ $('Validate & Score Urgency1').item.json.phone_e164 }}",
+        "toWhatsapp": true,
+        "message": "={{ 'Namaste ' + $('Validate & Score Urgency1').item.json.full_name + ', your flood relief request [' + $('Validate & Score Urgency1').item.json.request_id + '] has been recorded. Help is on the way.' }}",
+        "options": {}
+      },
+      "id": "6bb5e564-b94b-4304-bff8-a68581fc1772",
+      "name": "Send WhatsApp Confirmation1",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        1680
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "gNZ8qWUpoT7ZrWMt",
+          "name": "Twilio account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond2",
+              "leftValue": "={{ $('Validate & Score Urgency1').item.json.urgency }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1b0f703a-3dc1-49ec-87ff-63a863445b37",
+      "name": "IF Critical?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "1598000905",
+        "text": "=🚨 *CRITICAL RESCUE REQUEST* 🚨\n\n*ID:* `{{ $('Validate & Score Urgency1').item.json.request_id }}`\n*Urgency:* CRITICAL\n*Need:* {{ $('Validate & Score Urgency1').item.json.need_type.toUpperCase() }}\n*People in Danger:* {{ $('Validate & Score Urgency1').item.json.num_people }}\n\n👤 *Requester:* {{ $('Validate & Score Urgency1').item.json.full_name }}\n📞 *Phone:* [{{ $('Validate & Score Urgency1').item.json.phone_e164 }}](tel:{{ $('Validate & Score Urgency1').item.json.phone_e164 }})\n📍 *Location:* {{ $('Validate & Score Urgency1').item.json.ward_or_village }}, {{ $('Validate & Score Urgency1').item.json.district }}\n🗺️ *Map Pin:* {{ $('Extract Coordinates1').item.json.maps_link }}\n\n📝 *Notes:* {{ $('Validate & Score Urgency1').item.json.description }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "512c640a-4c82-4bd8-8a15-09764276c373",
+      "name": "Alert Rescue Team - Telegram1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        1584
+      ],
+      "webhookId": "f4da2f74-dfda-4f2e-b03c-6c5f40e4c79f",
+      "credentials": {
+        "telegramApi": {
+          "id": "ddNAUyNDlsAFCGc2",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - New Request1": {
+      "main": [
+        [
+          {
+            "node": "Normalize Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Fields1": {
+      "main": [
+        [
+          {
+            "node": "Validate & Score Urgency1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Score Urgency1": {
+      "main": [
+        [
+          {
+            "node": "IF Valid?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid?1": {
+      "main": [
+        [
+          {
+            "node": "Geocode Location1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond - Instant Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geocode Location1": {
+      "main": [
+        [
+          {
+            "node": "Extract Coordinates1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Coordinates1": {
+      "main": [
+        [
+          {
+            "node": "Save to Airtable - Requests1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Airtable - Requests1": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Confirmation1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Confirmation1": {
+      "main": [
+        [
+          {
+            "node": "IF Critical?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Critical?1": {
+      "main": [
+        [
+          {
+            "node": "Alert Rescue Team - Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1,
+    "availableInMCP": false
+  },
+  "versionId": "8821f122-1de2-4196-b186-956a69311a44",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ab782a197a34b627a970462134e9e8786494badc720390c65408c52487825c6c"
+  },
+  "nodeGroups": [],
+  "id": "mgXvCuhIgwily6u6",
+  "tags": []
+}
